@@ -1,1 +1,1 @@
-from .DenseNet import *
+from .DenseNet import DenseNet

@@ -1,9 +1,10 @@
 from typing import Optional
 import torch.nn as nn
 import torch
+import yaml
 
 
-class _TransitionLayer(nn.ModuleList):
+class _TransitionLayer(nn.Module):
     def __init__(
         self,
         in_channels,
@@ -31,10 +32,9 @@ class _TransitionLayer(nn.ModuleList):
         )
 
     def forward(self, x: torch.Tensor):
-        out = self.bn(x)
-        out = self.act(out)
-        out = self.conv(out)
-        out = self.avg_pool(out)
+        out = x
+        for _, module in self.named_modules():
+            out = module(out)
         return out
 
 
@@ -61,21 +61,21 @@ class _DenseBlock(nn.ModuleList):
             self.add_module(f"layer_{i + 1}", nn.Sequential(bn, act, conv))
 
     def forward(self, x: torch.Tensor):
-        outputs = [x]
-        for layer in self:
-            out = layer(x)
+        out = x
+        outputs = [out]
+        for _, module in self.named_modules():
+            out = module(out)
             outputs.append(out)
         return torch.concat(outputs, 1)
 
 
-# DenseNet(5, 3, 256, [2, 2, 3], 32)
-class DenseNet(nn.ModuleList):
+class DenseNet(nn.Module):
     def __init__(
         self,
         num_classes: int,
         in_channels: int,
         in_features: int,
-        conv_num_in_blocks,
+        conv_num_in_blocks: list[int],
         stack_channels: int,
         *args,
         **kwargs,
@@ -88,6 +88,10 @@ class DenseNet(nn.ModuleList):
             stride=1,
         )
         self.num_classes = num_classes
+        self.in_channels = in_channels
+        self.in_features = in_features
+        self.conv_num_in_blocks = conv_num_in_blocks
+        self.stack_channels = stack_channels
 
         num_channels = stack_channels
         for i in range(len(conv_num_in_blocks) - 1):
@@ -120,15 +124,60 @@ class DenseNet(nn.ModuleList):
 
     def forward(self, x: torch.Tensor):
         out = x
-        for layer in self:
-            out = layer(out)
-            print(layer, out.shape)
+        for _, module in self.named_modules():
+            out = module(out)
         return out
 
     @staticmethod
     def from_config(config_path: str) -> "DenseNet":
-        pass
+        try:
+            with open(config_path, "r", encoding="utf-8") as read_stream:
+                config = yaml.safe_load(read_stream)
+                read_stream.close()
+                return DenseNet(
+                    config["num_classes"],
+                    config["in_channels"],
+                    config["in_features"],
+                    config["conv_num_in_blocks"],
+                    config["stack_channels"],
+                )
+        except yaml.YAMLError as err:
+            print(err)
 
     @staticmethod
-    def craete_config(save_to: str) -> None:
-        pass
+    def create_config(
+        config_save_path: str,
+        num_classes: int,
+        in_channels: int,
+        in_features: int,
+        conv_num_in_blocks: list[int],
+        stack_channels: int,
+    ) -> None:
+        with open(config_save_path, "w", encoding="utf-8") as f:
+            f.write(
+                f"""num_classes: {num_classes}\
+                \nin_channels: {in_channels}\
+                \nin_features: {in_features}\
+                \nconv_num_in_blocks: {conv_num_in_blocks}\
+                \nstack_channels: {stack_channels}\
+                    """
+            )
+            f.close()
+
+    def save_config(
+        self,
+        config_save_path: str,
+    ) -> None:
+        with open(config_save_path, "w", encoding="utf-8") as f:
+            f.write(
+                f"""num_classes: {self.num_classes}\
+                \nin_channels: {self.in_channels}\
+                \nin_features: {self.in_features}\
+                \nconv_num_in_blocks: {self.conv_num_in_blocks}\
+                \nstack_channels: {self.stack_channels}\
+                    """
+            )
+            f.close()
+
+    def get_num_params(self):
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
