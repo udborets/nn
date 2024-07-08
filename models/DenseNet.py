@@ -38,7 +38,7 @@ class _TransitionLayer(nn.Module):
         return out
 
 
-class _DenseBlock(nn.ModuleList):
+class _DenseBlock(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -179,5 +179,5 @@ class DenseNet(nn.Module):
             )
             f.close()
 
-    def get_num_params(self):
+    def get_num_params(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
